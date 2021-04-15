@@ -2,9 +2,9 @@ using JSONSchemaGenerator
 using Test
 
 struct Address
-	street_address::String
-	city::String
-	state::String
+    street_address::String
+    city::String
+    state::String
 end
 
 struct Model
