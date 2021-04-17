@@ -15,7 +15,8 @@ StructTypes = "1.6"
 julia = "1.2"
 
 [extras]
+JSONSchema = "7d188eb4-7ad8-530c-ae41-71a32a6d4692"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test"]
+test = ["Test", "JSONSchema"]

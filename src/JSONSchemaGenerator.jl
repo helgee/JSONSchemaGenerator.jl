@@ -4,56 +4,54 @@ using JSON3
 using OrderedCollections: OrderedDict
 using StructTypes
 
-const SCHEMA_VERSION = "http://json-schema.org/draft-07/schema#"
-
 export SchemaGenerator
-export JSONSchema, JSONString, JSONNumber, JSONInt, JSONBool, JSONRef
-export JSONObject, JSONArray, JSONList, JSONTuple, JSONOneOf
 export generate
 
-abstract type JSONSchema end
+const SCHEMA_VERSION = "http://json-schema.org/draft-07/schema#"
 
-StructTypes.StructType(::Type{JSONSchema}) = StructTypes.AbstractType()
-StructTypes.StructType(::Type{<:JSONSchema}) = StructTypes.OrderedStruct()
-StructTypes.omitempties(::Type{<:JSONSchema}) = true
-write(io::IO, schema::JSONSchema) = JSON3.write(io, schema)
-write(schema::JSONSchema) = write(stdout, schema)
+abstract type Schema end
 
-Base.show(io::IO, schema::JSONSchema) = write(io, schema)
-Base.:(==)(a::JSONSchema, b::JSONSchema) = string(a) == string(b)
+StructTypes.StructType(::Type{Schema}) = StructTypes.AbstractType()
+StructTypes.StructType(::Type{<:Schema}) = StructTypes.OrderedStruct()
+StructTypes.omitempties(::Type{<:Schema}) = true
+write(io::IO, schema::Schema) = JSON3.write(io, schema)
+write(schema::Schema) = write(stdout, schema)
 
-struct JSONString <: JSONSchema
+Base.show(io::IO, schema::Schema) = write(io, schema)
+Base.:(==)(a::Schema, b::Schema) = string(a) == string(b)
+
+struct JSONString <: Schema
     type::Symbol
     format::String
     JSONString(format="") = new(:string, format)
 end
 
-JSONSchema(::Type{<:AbstractString}) = JSONString()
+Schema(::Type{<:AbstractString}) = JSONString()
 
-struct JSONNumber <: JSONSchema
+struct JSONNumber <: Schema
     type::Symbol
     JSONNumber(type=:number) = new(type)
 end
 const JSONInt() = JSONNumber(:integer)
 
-JSONSchema(::Type{<:Integer}) = JSONNumber(:integer)
-JSONSchema(::Type{<:Number}) = JSONNumber(:number)
+Schema(::Type{<:Integer}) = JSONNumber(:integer)
+Schema(::Type{<:Number}) = JSONNumber(:number)
 
-struct JSONBool <: JSONSchema
+struct JSONBool <: Schema
     type::Symbol
     JSONBool() = new(:boolean)
 end
 
-JSONSchema(::Type{Bool}) = JSONBool()
+Schema(::Type{Bool}) = JSONBool()
 
-abstract type JSONArray <: JSONSchema end
+abstract type JSONArray <: Schema end
 
 StructTypes.StructType(::Type{JSONArray}) = StructTypes.AbstractType()
 StructTypes.isempty(::Type{JSONArray}, val::Int) = iszero(val)
 
 struct JSONList <: JSONArray
     type::Symbol
-    items::JSONSchema
+    items::Schema
     minItems::Int
     maxItems::Int
     function JSONList(items, length=0)
@@ -61,12 +59,12 @@ struct JSONList <: JSONArray
     end
 end
 
-JSONSchema(arr::Type{<:AbstractArray}) = JSONList(JSONSchema(eltype(arr)))
-JSONSchema(::Type{NTuple{N, T}}) where {N, T} = JSONList(JSONSchema(T), N)
+Schema(arr::Type{<:AbstractArray}) = JSONList(Schema(eltype(arr)))
+Schema(::Type{NTuple{N, T}}) where {N, T} = JSONList(Schema(T), N)
 
 struct JSONTuple <: JSONArray
     type::Symbol
-    items::Vector{JSONSchema}
+    items::Vector{Schema}
     minItems::Int
     maxItems::Int
     function JSONTuple(items, length=0)
@@ -74,42 +72,46 @@ struct JSONTuple <: JSONArray
     end
 end
 
-function JSONSchema(tup::Type{<:Tuple})
+function Schema(tup::Type{<:Tuple})
     types = fieldtypes(tup)
-    return JSONTuple(collect(JSONSchema.(types)), length(types))
+    return JSONTuple(collect(Schema.(types)), length(types))
 end
 
 isrequired(type) = !(type isa Union && type >: Nothing)
 
-struct JSONObject <: JSONSchema
+struct JSONObject <: Schema
     type::Symbol
     juliatype::Symbol
-    properties::OrderedDict{Symbol, JSONSchema}
+    properties::OrderedDict{Symbol, Schema}
     required::Vector{Symbol}
     JSONObject(type, properties, required) = new(:object, type, properties, required)
 end
 StructTypes.excludes(::Type{JSONObject}) = (:juliatype,)
 
-struct JSONOneOf <: JSONSchema
-    oneOf::Vector{JSONSchema}
+struct JSONOneOf <: Schema
+    oneOf::Vector{Schema}
 end
 
 function subschemas end
 
-function JSONSchema(::Type{T}) where T
-    isabstracttype(T) && return JSONOneOf(collect(JSONSchema.(subschemas(T))))
+function Schema(::Type{T}) where T
+    isabstracttype(T) && return JSONOneOf(collect(Schema.(subschemas(T))))
 
-    properties = OrderedDict{Symbol, JSONSchema}()
+    properties = OrderedDict{Symbol, Schema}()
     required = Symbol[]
     for (name, type) in zip(fieldnames(T), fieldtypes(T))
         isrequired(type) && push!(required, name)
-        push!(properties, name=>JSONSchema(type))
+        push!(properties, name=>Schema(type))
     end
     return JSONObject(nameof(T), properties, required)
 end
-JSONSchema(::Type{Union{T, Nothing}}) where {T} = JSONSchema(T)
+Schema(::Type{Union{T, Nothing}}) where {T} = Schema(T)
 
-struct JSONRef <: JSONSchema
+function Schema(::Type{<:AbstractDict})
+    properties = OrderedDict{Symbol, Schema}()
+end
+
+struct JSONRef <: Schema
     name::String
     ref::String
     JSONRef(name) = new(name, "#/definitions/$name")
@@ -119,16 +121,16 @@ StructTypes.names(::Type{JSONRef}) = ((:ref, Symbol("\$ref")),)
 
 struct SchemaGenerator
     schema::String
-    definitions::OrderedDict{String, JSONSchema}
+    definitions::OrderedDict{String, Schema}
     type::Symbol
     format::String
-    array_items::Union{Nothing, JSONSchema}
-    tuple_items::Vector{JSONSchema}
+    array_items::Union{Nothing, Schema}
+    tuple_items::Vector{Schema}
     minItems::Int
     maxItems::Int
-    properties::OrderedDict{Symbol, JSONSchema}
+    properties::OrderedDict{Symbol, Schema}
     required::Vector{Symbol}
-    root::JSONSchema
+    root::Schema
 end
 StructTypes.StructType(::Type{SchemaGenerator}) = StructTypes.OrderedStruct()
 function StructTypes.names(::Type{SchemaGenerator})
@@ -137,7 +139,7 @@ end
 StructTypes.excludes(::Type{SchemaGenerator}) = (:root,)
 StructTypes.omitempties(::Type{SchemaGenerator}) = true
 StructTypes.isempty(::Type{SchemaGenerator}, val::Int) = iszero(val)
-function StructTypes.isempty(::Type{SchemaGenerator}, val::Union{Nothing, JSONSchema})
+function StructTypes.isempty(::Type{SchemaGenerator}, val::Union{Nothing, Schema})
     return isnothing(val)
 end
 
@@ -153,10 +155,10 @@ function hoist_definitions!(definitions, schema::JSONObject)
     end
     return nothing
 end
-hoist_definitions!(definitions, ::JSONSchema) = nothing
+hoist_definitions!(definitions, ::Schema) = nothing
 
 function SchemaGenerator(model)
-    root = JSONSchema(model)
+    root = Schema(model)
     definitions = OrderedDict{String, JSONObject}()
     hoist_definitions!(definitions, root)
 
@@ -166,7 +168,7 @@ function SchemaGenerator(model)
     else
         format = ""
     end
-    if hasfield(typeof(root), :items) && fieldtype(typeof(root), :items) <: JSONSchema
+    if hasfield(typeof(root), :items) && fieldtype(typeof(root), :items) <: Schema
         array_items = getfield(root, :items)
     else
         array_items = nothing
