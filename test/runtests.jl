@@ -178,7 +178,7 @@ stripws(str) = replace(str, r"\s" => "")
             JSON3.write(f, model)
         end
         schema = Schema(read(schema_file, String))
-        @test_broken isvalid(JSON3.read(read(json_file, String)), schema)
+        @test isvalid(JSON3.read(read(json_file, String), Dict), schema)
     end
 end
 
