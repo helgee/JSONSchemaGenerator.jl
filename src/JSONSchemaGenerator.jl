@@ -94,7 +94,7 @@ isrequired(type) = !(type isa Union && type >: Nothing)
 
 struct JSONObject <: Schema
     type::Symbol
-    juliatype::Union{Symbol, Nothing}
+    title::Union{Symbol, Nothing}
     properties::OrderedDict{Symbol, Schema}
     required::Vector{Symbol}
     additionalProperties::Union{Bool, Schema}
@@ -102,7 +102,7 @@ struct JSONObject <: Schema
         return new(:object, type, properties, required, additionalProperties)
     end
 end
-StructTypes.excludes(::Type{JSONObject}) = (:juliatype,)
+# StructTypes.excludes(::Type{JSONObject}) = (:juliatype,)
 
 function Schema(::StructTypes.DataType, ::Type{T}) where T
     properties = OrderedDict{Symbol, Schema}()
@@ -236,8 +236,8 @@ function hoist_definitions!(definitions, schema::JSONObject; isroot=false)
         schema.properties[key] = ref
     end
 
-    (isroot || isnothing(schema.juliatype)) && return nothing
-    name = lowercase(string(schema.juliatype))
+    (isroot || isnothing(schema.title)) && return nothing
+    name = lowercase(string(schema.title))
     if !(name in keys(definitions))
         push!(definitions, name=>schema)
     end
